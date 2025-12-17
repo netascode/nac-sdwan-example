@@ -5,7 +5,7 @@ Suite Teardown  Run On Last Process   Logout SDWAN Manager
 Default Tags    sdwan   config  classic_policy_objects
 Resource        ../../sdwan_common.resource
 
-{% if sdwan.policy_objects.color_lists is defined %}
+{% if sdwan.policy_objects is defined and sdwan.policy_objects.color_lists is defined %}
 
 *** Test Cases ***
 Get Color List(s)
@@ -20,7 +20,7 @@ Verify Policy Objects Color List {{ obj_name.name }}
     Should Be Equal Value Json String   ${r_id.json()}   $..name   {{ obj_name.name }}
     ${req_color_list}=   Create List   {{ obj_name.colors | join('   ') }}
     ${color_entries}=   Get Value From Json   ${r_id.json()}   $..color
-    Should Be Equal Value Json List   ${r_id.json()}   $..color   ${req_color_list}   msg=colors
+    Should Be Equal Value Json List   ${r_id.json()}   $..color   ${req_color_list}   msg=colors are
 
 {% endfor %}
 {% endif %}

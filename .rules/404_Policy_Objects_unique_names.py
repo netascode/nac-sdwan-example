@@ -1,5 +1,5 @@
 class Rule:
-    id = "401"
+    id = "404"
     description = "Verify Policy Object unique names in policy objects feature profile"
     severity = "HIGH"
 

@@ -1,201 +1,327 @@
 *** Settings ***
-Documentation   Verify Switchport Feature template
+Documentation   Verify AAA Feature Template
 Suite Setup     Login SDWAN Manager
-Suite Teardown    Run On Last Process    Logout SDWAN Manager
+Suite Teardown  Run On Last Process    Logout SDWAN Manager
 Default Tags    sdwan    config    feature_templates
 Resource        ../../sdwan_common.resource
 
-{% if sdwan.edge_feature_templates.aaa_templates is defined %}
+{% if sdwan.edge_feature_templates is defined and sdwan.edge_feature_templates.aaa_templates is defined %}
 
 *** Test Cases ***
-Get AAA Feature Template
-    ${r}=    Get On Session    sdwan_manager    /dataservice/template/feature
+Get AAA Feature Templates
+    ${r}=    GET On Session    sdwan_manager    /dataservice/template/feature
     ${r}=    Get Value From Json    ${r.json()}    $..data[?(@..templateType=="cedge_aaa")]
     Set Suite Variable    ${r}
 
-{% for aaa_template in sdwan.edge_feature_templates.aaa_templates | default([]) %}
+{% for ft_yaml in sdwan.edge_feature_templates.aaa_templates | default([]) %}
 
-Verify Edge Feature Template AAA Feature Template {{ aaa_template.name }}
-    ${template_id}=    Get Value From Json    ${r}    $[?(@.templateName=="{{ aaa_template.name }}")]
-    Should Be Equal Value Json String    ${template_id}    $..templateName    {{ aaa_template.name }}    msg=AAA template name
-    Should Be Equal Value Json String    ${template_id}    $..templateDescription    {{ aaa_template.description }}    msg=AAA template description
+Verify Edge Feature Template AAA Feature Template {{ ft_yaml.name }}
+    ${ft_summary_json}=    Get Value From Json    ${r}    $[?(@.templateName=="{{ ft_yaml.name }}")]
+    Should Not be Empty   ${ft_summary_json}   msg=Feature Template '{{ft_yaml.name}}' should be present on the Manager
+    Should Be Equal Value Json String    ${ft_summary_json}    $..templateName    {{ ft_yaml.name }}    msg=name
+    Should Be Equal Value Json Special_String    ${ft_summary_json}    $..templateDescription    {{ ft_yaml.description | normalize_special_string }}    msg=description
 
-{% set test_list = [] %}
-{% for item in aaa_template.device_types | default(defaults.sdwan.edge_feature_templates.aaa_templates.device_types) %}
-{% set test = "vedge-" ~ item %}
-{% set _ = test_list.append(test) %}
-{% endfor %}
+    # Device types validation
+    {% set device_types_yaml = [] %}
+    {% for item in ft_yaml.device_types | default(defaults.sdwan.edge_feature_templates.aaa_templates.device_types) %}
+    {% set device_type = "vedge-" ~ item %}
+    {% set _ = device_types_yaml.append(device_type) %}
+    {% endfor %}
+    ${device_types_json}=    Get Value From Json    ${ft_summary_json}    $..deviceType
+    ${device_types_yaml}=    Create List           {{ device_types_yaml | join('   ') }}
+    Lists Should Be Equal    ${device_types_json}[0]    ${device_types_yaml}    ignore_order=True    msg=device_types
 
-    ${dt_list}=    Get Value From Json    ${template_id}    $..deviceType
-    ${test_list}=    Create List    {{ test_list | join('   ') }}
-    Lists Should Be Equal    ${dt_list[0]}    ${test_list}    ignore_order=True    msg=device type
+    # Get template definition
+    ${ft_id}=    Get Value From Json    ${r}    $[?(@.templateName=="{{ ft_yaml.name }}")].templateId
+    ${ft}=    GET On Session    sdwan_manager    /dataservice/template/feature/definition/${ft_id[0]}
 
-    ${template_id}=    Get Value From Json    ${r}    $[?(@.templateName=="{{ aaa_template.name }}")].templateId
-    ${r_id}=    GET On Session    sdwan_manager    /dataservice/template/feature/definition/${template_id[0]}
+    Should Be Equal Value Json List Length    ${ft.json()}    $..["accounting-rule"].vipValue    {{ ft_yaml.accounting_rules | default([]) | length }}    msg=accounting_rules length
 
-    Should Be Equal Value Json List Length    ${r_id.json()}    $..["accounting-rule"].vipValue    {{ aaa_template.accounting_rules | length }}    msg=accounting rules
+{% for accounting_rule in ft_yaml.accounting_rules | default([]) %}
 
-{% for accounting_index in range(aaa_template.accounting_rules | default([]) | length()) %}
+    Log    === Accounting Rule {{loop.index0}} ===
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["accounting-rule"].vipValue[{{loop.index0}}].method
+    ...    {{ accounting_rule.method | default("not_defined")}}
+    ...    {{ accounting_rule.method_variable | default("not_defined") }}
+    ...    msg=accounting_rules.method
 
-    Should Be Equal Value Json String    ${r_id.json()}    $..["accounting-rule"].vipValue[{{accounting_index}}].method.vipValue    {{ aaa_template.accounting_rules[accounting_index].method | default("not_defined")}}    msg=method
-    Should Be Equal Value Json String    ${r_id.json()}    $..["accounting-rule"].vipValue[{{accounting_index}}].level.vipValue     {{ aaa_template.accounting_rules[accounting_index].privilege_level | default("not_defined")}}    msg=privilege level
-    Should Be Equal Value Json String    ${r_id.json()}    $..["accounting-rule"].vipValue[{{accounting_index}}].["start-stop"].vipValue    {{ aaa_template.accounting_rules[accounting_index].start_stop | default("not_defined") | lower }}    msg=start_stop
-    Should Be Equal Value Json String    ${r_id.json()}    $..["accounting-rule"].vipValue[{{accounting_index}}].["start-stop"].vipVariableName    {{ aaa_template.accounting_rules[accounting_index].start_stop_variable | default("not_defined")}}    msg=start_stop variable
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["accounting-rule"].vipValue[{{loop.index0}}].level
+    ...    {{ accounting_rule.privilege_level | default("not_defined")}}
+    ...    {{ accounting_rule.privilege_level_variable | default("not_defined") }}
+    ...    msg=accounting_rules.privilege_level
 
-{% if aaa_template.accounting_rules[accounting_index].groups | default("not_defined") == 'not_defined' %}
-    Should Be Equal Value Json String    ${r_id.json()}    $..["accounting-rule"].vipValue[{{accounting_index}}].group.vipValue    {{ aaa_template.accounting_rules[accounting_index].groups | default("not_defined") }}    msg=no rules defined
-{% else %}
-    ${grp_list}=    Create List    {{ aaa_template.accounting_rules[accounting_index].groups | join('   ') }}
-    ${group}=    Get Value From Json    ${r_id.json()}    $..["accounting-rule"].vipValue[{{accounting_index}}].group.vipValue
-    ${rec_group}=    Split String    ${group[0]}
-    Lists Should Be Equal    ${rec_group}    ${grp_list}    ignore_order=True    msg=groups
-{% endif %}
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["accounting-rule"].vipValue[{{loop.index0}}].["start-stop"]
+    ...    {{ accounting_rule.start_stop | default("not_defined") | lower }}
+    ...    {{ accounting_rule.start_stop_variable | default("not_defined")}}
+    ...    msg=accounting_rules.start_stop
 
-{% endfor %}
-
-{% if aaa_template.authentication_and_authorization_order | default("not_defined") == 'not_defined' %}
-    Should Be Equal Value Json String    ${r_id.json()}    $..["server-auth-order"].vipValue    {{ aaa_template.authentication_and_authorization_order | default("not_defined") }}    msg=no authentication defined
-{% else %}
-    ${auth_list}=    Create List    {{ aaa_template.authentication_and_authorization_order | join('   ') }}
-    ${auth}=    Get Value From Json    ${r_id.json()}    $..["server-auth-order"].vipValue
-    ${rec_auth}=    Split String    ${auth[0]}    ,
-    Lists Should Be Equal    ${rec_auth}    ${auth_list}    ignore_order=True    msg=authentication and authorization order
-{% endif %}
-
-    Should Be Equal Value Json String    ${r_id.json()}    $..["authorization-config-commands"].vipValue    {{ aaa_template.authorization_config_commands | lower | default("not_defined") }}    msg=authorization config commands value
-    Should Be Equal Value Json String    ${r_id.json()}    $..["authorization-config-commands"].vipVariableName    {{ aaa_template.authorization_config_commands_variable | default("not_defined") }}    msg=authorization config commands variable
-
-    Should Be Equal Value Json String    ${r_id.json()}    $..["authorization-console"].vipValue    {{ aaa_template.authorization_console | lower | default("not_defined") }}    msg=authorization console value
-    Should Be Equal Value Json String    ${r_id.json()}    $..["authorization-console"].vipVariableName    {{ aaa_template.authorization_console_variable | default("not_defined") }}    msg=authorization console variable
-
-    Should Be Equal Value Json List Length    ${r_id.json()}    $..["authorization-rule"].vipValue    {{ aaa_template.authorization_rules | length }}    msg=authorization rules
-    
-{% for authorization_index in range(aaa_template.authorization_rules | default([]) | length()) %}
-    Should Be Equal Value Json String    ${r_id.json()}    $..["authorization-rule"].vipValue[{{authorization_index}}].method.vipValue    {{ aaa_template.authorization_rules[authorization_index].method | default("not_defined") }}    msg=method
-    Should Be Equal Value Json String    ${r_id.json()}    $..["authorization-rule"].vipValue[{{authorization_index}}].level.vipValue    {{ aaa_template.authorization_rules[authorization_index].privilege_level | default("not_defined") }}    msg=privilege level
-    Should Be Equal Value Json String    ${r_id.json()}    $..["authorization-rule"].vipValue[{{authorization_index}}].["if-authenticated"].vipValue    {{ aaa_template.authorization_rules[authorization_index].authenticated | lower | default("not_defined")}}    msg=authenticated
-
-{% if aaa_template.authorization_rules[authorization_index].groups | default("not_defined") == 'not_defined' %}
-    Should Be Equal Value Json String    ${r_id.json()}    $..["authorization-rule"].vipValue[{{authorization_index}}].group.vipValue    {{ aaa_template.authorization_rules[authorization_index].groups | default("not_defined") }}    msg=no authorization rules groups
-{% else %}
-    ${group}=    Create List    {{ aaa_template.authorization_rules[authorization_index].groups | join('   ') }}
-    ${auth_grp}=    Get Value From Json    ${r_id.json()}    $..["authorization-rule"].vipValue[{{authorization_index}}].group.vipValue
-    ${rec_grp}=    Split String    ${auth_grp[0]}    ,
-    Lists Should Be Equal    ${rec_grp}    ${group}    ignore_order=True    msg=authorization rules groups
-{% endif %}
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["accounting-rule"].vipValue[{{loop.index0}}].group
+    ...    {{ accounting_rule.groups | default("not_defined") }}
+    ...    {{ accounting_rule.groups_variable | default("not_defined") }}
+    ...    msg=accounting_rules.groups
 
 {% endfor %}
 
-    Should Be Equal Value Json String    ${r_id.json()}    $..authentication.dot1x.default..vipValue    {{ aaa_template.dot1x_authentication | lower }}    msg=dot1x authentication
-    Should Be Equal Value Json String    ${r_id.json()}    $..authentication.dot1x.default..vipVariableName    {{ aaa_template.dot1x_authentication_variable }}    msg=dot1x authentication variable
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["server-auth-order"]
+    ...    {{ ft_yaml.authentication_and_authorization_order | default("not_defined") }}
+    ...    {{ ft_yaml.authentication_and_authorization_order_variable | default("not_defined") }}
+    ...    msg=authentication_and_authorization_order_variable
 
-    Should Be Equal Value Json String    ${r_id.json()}    $..accounting.dot1x.default..vipValue    {{ aaa_template.dot1x_accounting | lower }}    msg=dot1x accounting
-    Should Be Equal Value Json String    ${r_id.json()}    $..accounting.dot1x.default..vipVariableName    {{ aaa_template.dot1x_accounting_variable }}    msg=dot1x accounting variable
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["authorization-config-commands"]
+    ...    {{ ft_yaml.authorization_config_commands | default("not_defined") | lower }}
+    ...    {{ ft_yaml.authorization_config_commands_variable | default("not_defined") }}
+    ...    msg=authorization_config_commands
 
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["domain-stripping"].vipValue    {{ aaa_template.radius_dynamic_author.domain_stripping }}    msg=domain stripping
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["domain-stripping"].vipVariableName    {{ aaa_template.radius_dynamic_author.domain_stripping_variable }}    msg=domain stripping variable
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["auth-type"].vipValue    {{ aaa_template.radius_dynamic_author.authentication_type }}    msg=authentication type
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["auth-type"].vipVariableName    {{ aaa_template.radius_dynamic_author.authentication_type_variable }}    msg=authentication type variable
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"].port.vipValue    {{ aaa_template.radius_dynamic_author.port }}    msg=port
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"].port.vipVariableName    {{ aaa_template.radius_dynamic_author.port_variable }}    msg=port variable
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["rda-server-key"].vipValue    {{ aaa_template.radius_dynamic_author.server_key }}    msg=server key
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["rda-server-key"].vipVariableName    {{ aaa_template.radius_dynamic_author.server_key_variable }}    msg=server key variable
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["authorization-console"]
+    ...    {{ ft_yaml.authorization_console | default("not_defined") | lower }}
+    ...    {{ ft_yaml.authorization_console_variable | default("not_defined") }}
+    ...    msg=authorization_console
 
-    Should Be Equal Value Json List Length    ${r_id.json()}    $..["radius-dynamic-author"]["radius-client"].vipValue    {{ aaa_template.radius_dynamic_author.clients | length }}    msg=clients
+    Should Be Equal Value Json List Length    ${ft.json()}    $..["authorization-rule"].vipValue    {{ ft_yaml.authorization_rules | default([]) | length }}    msg=authorization_rules length
 
-{% for radius_dac in range(aaa_template.radius_dynamic_author.clients | default([]) | length()) %}
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["radius-client"].vipValue[{{radius_dac}}].ip.vipValue    {{ aaa_template.radius_dynamic_author.clients[radius_dac].ip | default("not_defined") }}    msg=ip
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["radius-client"].vipValue[{{radius_dac}}].ip.vipVariableName    {{ aaa_template.radius_dynamic_author.clients[radius_dac].ip_variable | default("not_defined") }}    msg=ip variable
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["radius-client"].vipValue[{{radius_dac}}].vpn.vipValue..name.vipValue    {{ aaa_template.radius_dynamic_author.clients[radius_dac].vpn_id | default("not_defined") }}    msg=vpn id
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["radius-client"].vipValue[{{radius_dac}}].vpn.vipValue..name.vipVariableName    {{ aaa_template.radius_dynamic_author.clients[radius_dac].vpn_id_variable | default("not_defined") }}    msg=vpn id variable
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-dynamic-author"]["radius-client"].vipValue[{{radius_dac}}].vpn.vipValue..server-key.vipValue    {{ aaa_template.radius_dynamic_author.clients[radius_dac].server_key | default("not_defined") }}    msg=server key
-{% endfor %}
+{% for authorization_rule in ft_yaml.authorization_rules | default([]) %}
 
-    Should Be Equal Value Json List Length    ${r_id.json()}    $..radius.vipValue    {{ aaa_template.radius_server_groups | length }}    msg=radius server group
+    Log    === Authorization Rule {{loop.index0}} ===
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["authorization-rule"].vipValue[{{loop.index0}}].method
+    ...    {{ authorization_rule.method | default("not_defined") }}
+    ...    {{ authorization_rule.method_variable | default("not_defined") }}
+    ...    msg=authorization_rules.method
 
-{% for radius_index in range(aaa_template.radius_server_groups | default([]) | length()) %}
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["authorization-rule"].vipValue[{{loop.index0}}].level
+    ...    {{ authorization_rule.privilege_level | default("not_defined") }}
+    ...    {{ authorization_rule.privilege_level_variable | default("not_defined") }}
+    ...    msg=authorization_rules.privilege_level
 
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}]["group-name"].vipValue    {{ aaa_template.radius_server_groups[radius_index].name | default("not_defined") }}    msg=name
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}]["source-interface"].vipValue    {{ aaa_template.radius_server_groups[radius_index].source_interface }}    msg=source interface
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}]["source-interface"].vipVariableName    {{ aaa_template.radius_server_groups[radius_index].source_interface_variable }}    msg=source interface variable
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].vpn.vipValue    {{ aaa_template.radius_server_groups[radius_index].vpn_id }}    msg=vpn id
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["authorization-rule"].vipValue[{{loop.index0}}].["if-authenticated"]
+    ...    {{ authorization_rule.authenticated | lower | default("not_defined")}}
+    ...    {{ authorization_rule.authenticated_variable | default("not_defined") }}
+    ...    msg=authorization_rules.authenticated
 
-    Should Be Equal Value Json List Length    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue    {{ aaa_template.radius_server_groups[radius_index].servers | length }}    msg=servers
-
-{% for item in range(aaa_template.radius_server_groups[radius_index].servers | default([]) | length()) %}
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}].address.vipValue    {{ aaa_template.radius_server_groups[radius_index].servers[item].address | default("not_defined") }}    msg=address
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}]["auth-port"].vipValue    {{ aaa_template.radius_server_groups[radius_index].servers[item].authentication_port | default("not_defined") }}    msg=authentication port
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}]["auth-port"].vipVariableName    {{ aaa_template.radius_server_groups[radius_index].servers[item].authentication_port_variable | default("not_defined") }}    msg=authentication port variable
-
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}]["acct-port"].vipValue    {{ aaa_template.radius_server_groups[radius_index].servers[item].accounting_port }}    msg=accounting port
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}]["acct-port"].vipVariableName    {{ aaa_template.radius_server_groups[radius_index].servers[item].accounting_port_variable }}    msg=accounting port variable
-
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}].timeout.vipValue    {{ aaa_template.radius_server_groups[radius_index].servers[item].timeout }}    msg=timeout
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}].timeout.vipVariableName    {{ aaa_template.radius_server_groups[radius_index].servers[item].timeout_variable }}    msg=timeout variable
-
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}].retransmit.vipValue    {{ aaa_template.radius_server_groups[radius_index].servers[item].retransmit_count }}    msg=retransmit count
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}].retransmit.vipVariableName    {{ item.retransmit_count_variable }}    msg=retransmit count variable
-
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}]["key-type"].vipValue    {{ aaa_template.radius_server_groups[radius_index].servers[item].key_type }}    msg=key type
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}]["key-type"].vipVariableName    {{ aaa_template.radius_server_groups[radius_index].servers[item].key_type_variable }}    msg=key type variable
-
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}].key.vipValue    {{ aaa_template.radius_server_groups[radius_index].servers[item].key }}    msg=key
-
-    Should Be Equal Value Json String    ${r_id.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ item }}]["secret-key"].vipValue    {{ aaa_template.radius_server_groups[radius_index].servers[item].secret_key }}    msg=secret key
-
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-trustsec"]["cts-auth-list"].vipValue    {{ aaa_template.radius_trustsec.cts_authorization_list }}    msg=cts authorization list
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-trustsec"]["cts-auth-list"].vipVariableName    {{ aaa_template.radius_trustsec.cts_authorization_list_variable }}    msg=cts authorization list variable
-    Should Be Equal Value Json String    ${r_id.json()}    $..["radius-trustsec"]["radius-trustsec-group"].vipValue    {{ aaa_template.radius_trustsec.server_group }}    msg=server group
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["authorization-rule"].vipValue[{{loop.index0}}].group
+    ...    {{ authorization_rule.groups | default("not_defined") }}
+    ...    {{ authorization_rule.groups_variable | default("not_defined") }}
+    ...    msg=authorization_rules.groups
 
 {% endfor %}
 
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..authentication.dot1x.default.authentication_group
+    ...    {{ ft_yaml.dot1x_authentication | default("not_defined") | lower }}
+    ...    {{ ft_yaml.dot1x_authentication_variable | default("not_defined") }}
+    ...    msg=dot1x_authentication
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..accounting.dot1x.default.["start-stop"].accounting_group
+    ...    {{ ft_yaml.dot1x_accounting | default("not_defined") | lower }}
+    ...    {{ ft_yaml.dot1x_accounting_variable | default("not_defined") }}
+    ...    msg=dot1x_accounting
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["radius-dynamic-author"]["domain-stripping"]
+    ...    {{ (ft_yaml.radius_dynamic_author | default({})).domain_stripping | default("not_defined") }}
+    ...    {{ (ft_yaml.radius_dynamic_author | default({})).domain_stripping_variable | default("not_defined") }}
+    ...    msg=radius_dynamic_author.domain_stripping
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["radius-dynamic-author"]["auth-type"]
+    ...    {{ (ft_yaml.radius_dynamic_author | default({})).authentication_type | default("not_defined") }}
+    ...    {{ (ft_yaml.radius_dynamic_author | default({})).authentication_type_variable | default("not_defined") }}
+    ...    msg=radius_dynamic_author.authentication_type
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["radius-dynamic-author"].port
+    ...    {{ (ft_yaml.radius_dynamic_author | default({})).port | default("not_defined") }}
+    ...    {{ (ft_yaml.radius_dynamic_author | default({})).port_variable | default("not_defined") }}
+    ...    msg=radius_dynamic_author.port
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["radius-dynamic-author"]["rda-server-key"]
+    ...    {{ (ft_yaml.radius_dynamic_author | default({})).server_key | default("not_defined") }}
+    ...    {{ (ft_yaml.radius_dynamic_author | default({})).server_key_variable | default("not_defined") }}
+    ...    msg=radius_dynamic_author.server_key
+
+    Should Be Equal Value Json List Length    ${ft.json()}    $..["radius-dynamic-author"]["radius-client"].vipValue    {{ ft_yaml.radius_dynamic_author.clients | default([]) | length }}    msg=radius_dynamic_author.clients length
+
+{% for radius_client in ft_yaml.radius_dynamic_author.clients | default([]) %}
+
+    Log    === RADIUS Dynamic Author Client {{loop.index0}} ===
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["radius-dynamic-author"]["radius-client"].vipValue[{{loop.index0}}].ip
+    ...    {{ radius_client.ip | default("not_defined") }}
+    ...    {{ radius_client.ip_variable | default("not_defined") }}
+    ...    msg=radius_dynamic_author.clients.ip
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["radius-dynamic-author"]["radius-client"].vipValue[{{loop.index0}}].vpn.vipValue..name
+    ...    {{ radius_client.vpn_id | default("not_defined") }}
+    ...    {{ radius_client.vpn_id_variable | default("not_defined") }}
+    ...    msg=radius_dynamic_author.clients.vpn_id
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["radius-dynamic-author"]["radius-client"].vipValue[{{loop.index0}}].vpn.vipValue..server-key
+    ...    {{ radius_client.server_key | default("not_defined") }}
+    ...    {{ radius_client.server_key_variable | default("not_defined") }}
+    ...    msg=radius_dynamic_author.clients.server_key
+
 {% endfor %}
 
-   Should Be Equal Value Json List Length    ${r_id.json()}   $..tacacs..vipValue    {{ aaa_template.tacacs_server_groups | length }}    msg=tacacs server group
+    Should Be Equal Value Json List Length    ${ft.json()}    $..radius.vipValue    {{ ft_yaml.radius_server_groups | default([]) | length }}    msg=radius_server_groups length
 
-{% for aaa_index in range(aaa_template.tacacs_server_groups | default([]) | length()) %}
+{% for radius_index in range(ft_yaml.radius_server_groups | default([]) | length()) %}
 
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}]["group-name"].vipValue    {{ aaa_template.tacacs_server_groups[aaa_index].name | default("not_defined") }}    msg=name
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}]..vpn.vipValue    {{ aaa_template.tacacs_server_groups[aaa_index].vpn_id }}    msg=vpn id
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}]["source-interface"].vipValue    {{ aaa_template.tacacs_server_groups[aaa_index].source_interface | default("not_defined") }}    msg=source_interface
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}]["source-interface"].vipVariableName    {{ aaa_template.tacacs_server_groups[aaa_index].source_interface_variable | default("not_defined") }}    msg=source interface variable
+    Log    === RADIUS Server Group {{radius_index}} ===
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}]["group-name"]
+    ...    {{ ft_yaml.radius_server_groups[radius_index].name | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].name_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.name
 
-    Should Be Equal Value Json List Length    ${r_id.json()}   $..tacacs.vipValue[{{ aaa_index }}]..server.vipValue    {{ aaa_template.tacacs_server_groups[aaa_index].servers | length }}    msg=servers
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}]["source-interface"]
+    ...    {{ ft_yaml.radius_server_groups[radius_index].source_interface | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].source_interface_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.source_interface
 
-{% for item in range(aaa_template.tacacs_server_groups[aaa_index].servers | default([]) | length()) %}
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}].vpn
+    ...    {{ ft_yaml.radius_server_groups[radius_index].vpn_id | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].vpn_id_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.vpn_id
 
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}].server.vipValue[{{ item }}].address.vipValue    {{ aaa_template.tacacs_server_groups[aaa_index].servers[item].address | default("not_defined") }}    msg=address
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}].server.vipValue[{{ item }}].port.vipValue    {{ aaa_template.tacacs_server_groups[aaa_index].servers[item].port | default("not_defined") }}    msg=port
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}].server.vipValue[{{ item }}].port.vipVariableName    {{ aaa_template.tacacs_server_groups[aaa_index].servers[item].port_variable | default("not_defined") }}    msg=port variable
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}].server.vipValue[{{ item }}].timeout.vipValue    {{ aaa_template.tacacs_server_groups[aaa_index].servers[item].timeout | default("not_defined") }}    msg=timeout
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}].server.vipValue[{{ item }}].timeout.vipVariableName    {{ aaa_template.tacacs_server_groups[aaa_index].servers[item].timeout_variable | default("not_defined") }}    msg=timeout variable
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}].server.vipValue[{{ item }}].key.vipValue    {{ aaa_template.tacacs_server_groups[aaa_index].servers[item].key | default("not_defined")}}    msg=key
-    Should Be Equal Value Json String    ${r_id.json()}    $..tacacs.vipValue[{{ aaa_index }}].server.vipValue[{{ item }}]["secret-key"].vipValue    {{ aaa_template.tacacs_server_groups[aaa_index].servers[item].secret_key | default("not_defined") }}    msg=secret_key
+    Should Be Equal Value Json List Length    ${ft.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue    {{ ft_yaml.radius_server_groups[radius_index].servers | length }}    msg=radius_server_groups.servers length
+
+{% for server_index in range(ft_yaml.radius_server_groups[radius_index].servers | default([]) | length()) %}
+
+    Log    === RADIUS Server Group {{radius_index}} Server {{server_index}} ===
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ server_index }}].address
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].address | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].address_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.servers.address
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ server_index }}]["auth-port"]
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].authentication_port | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].authentication_port_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.servers.authentication_port
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ server_index }}]["acct-port"]
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].accounting_port | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].accounting_port_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.servers.accounting_port
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ server_index }}].timeout
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].timeout | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].timeout_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.servers.timeout
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ server_index }}].retransmit
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].retransmit_count | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].retransmit_count_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.servers.retransmit_count
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ server_index }}]["key-type"]
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].key_type | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].key_type_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.servers.key_type
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ server_index }}].key
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].key | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].key_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.servers.key
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..radius.vipValue[{{ radius_index }}].server.vipValue[{{ server_index }}]["secret-key"]
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].secret_key | default("not_defined") }}
+    ...    {{ ft_yaml.radius_server_groups[radius_index].servers[server_index].secret_key_variable | default("not_defined") }}
+    ...    msg=radius_server_groups.servers.secret_key
 
 {% endfor %}
 
 {% endfor %}
 
-    Should Be Equal Value Json List Length    ${r_id.json()}   $..user.vipValue    {{ aaa_template.users | length }}    msg=users
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["radius-trustsec"]["cts-auth-list"]
+    ...    {{ (ft_yaml.radius_trustsec | default({})).cts_authorization_list | default("not_defined") }}
+    ...    {{ (ft_yaml.radius_trustsec | default({})).cts_authorization_list_variable | default("not_defined") }}
+    ...    msg=radius_trustsec.cts_authorization_list
 
-{% for names in aaa_template.users | default([])  %}
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..["radius-trustsec"]["radius-trustsec-group"]
+    ...    {{ (ft_yaml.radius_trustsec | default({})).server_group | default("not_defined") }}
+    ...    {{ (ft_yaml.radius_trustsec | default({})).server_group_variable | default("not_defined") }}
+    ...    msg=radius_trustsec.server_group
 
-    Should Be Equal Value Json String    ${r_id.json()}    $..user.vipValue[{{loop.index0}}].name.vipValue    {{ names.name | default("not_defined")}}    msg=name
-    Should Be Equal Value Json String    ${r_id.json()}    $..user.vipValue[{{loop.index0}}].vipOptional    {{ names.optional | default("not_defined")}}    msg=optional
-    Should Be Equal Value Json String    ${r_id.json()}    $..user.vipValue[{{loop.index0}}].password.vipValue    {{ names.password | default("not_defined")}}    msg=password
-    Should Be Equal Value Json String    ${r_id.json()}    $..user.vipValue[{{loop.index0}}].privilege.vipValue    {{ names.privilege_level | default("not_defined")}}    msg=privilege level
-    Should Be Equal Value Json String    ${r_id.json()}    $..user.vipValue[{{loop.index0}}].privilege.vipVariableName    {{ names.privilege_level_variable | default("not_defined")}}    msg=privilege level variable
-    Should Be Equal Value Json String    ${r_id.json()}    $..user.vipValue[{{loop.index0}}].secret.vipValue    {{ names.secret | default("not_defined")}}    msg=secret
+    Should Be Equal Value Json List Length    ${ft.json()}    $..tacacs.vipValue    {{ ft_yaml.tacacs_server_groups | default([]) | length }}    msg=tacacs_server_groups length
 
-{% if names.ssh_rsa_keys | default("not_defined") == 'not_defined' %}
-    Should Be Equal Value Json String    ${r_id.json()}    $..user.vipValue[{{loop.index0}}]["pubkey-chain"].vipValue..["key-string"].vipValue    {{ names.ssh_rsa_keys | default("not_defined") }}    msg=no ssh rsa key
-{% else %}
-    ${ssh_key}=    Create List    {{ names.ssh_rsa_keys | join('   ') }}
-    ${rsa_key}=    Get Value From Json    ${r_id.json()}    $..user.vipValue[{{loop.index0}}]["pubkey-chain"].vipValue..["key-string"].vipValue
-    ${rec_key}=    Split String    ${rsa_key[0]}    ,
-    Lists Should Be Equal    ${rec_key}    ${ssh_key}    ignore_order=True    msg=ssh rsa key
+{% for tacacs_index in range(ft_yaml.tacacs_server_groups | default([]) | length()) %}
 
-{% endif %}
+    Log    === TACACS Server Group {{tacacs_index}} ===
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..tacacs.vipValue[{{ tacacs_index }}]["group-name"]
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].name | default("not_defined") }}
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].name_variable | default("not_defined") }}
+    ...    msg=tacacs_server_groups.name
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..tacacs.vipValue[{{ tacacs_index }}].vpn
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].vpn_id | default("not_defined") }}
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].vpn_id_variable | default("not_defined") }}
+    ...    msg=tacacs_server_groups.vpn_id
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..tacacs.vipValue[{{ tacacs_index }}]["source-interface"]
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].source_interface | default("not_defined") }}
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].source_interface_variable | default("not_defined") }}
+    ...    msg=tacacs_server_groups.source_interface
+
+    Should Be Equal Value Json List Length    ${ft.json()}    $..tacacs.vipValue[{{ tacacs_index }}].server.vipValue    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers | length }}    msg=tacacs_server_groups.servers length
+
+{% for server_index in range(ft_yaml.tacacs_server_groups[tacacs_index].servers | default([]) | length()) %}
+
+    Log    === TACACS Server Group {{tacacs_index}} Server {{server_index}} ===
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..tacacs.vipValue[{{ tacacs_index }}].server.vipValue[{{ server_index }}].address
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers[server_index].address | default("not_defined") }}
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers[server_index].address_variable | default("not_defined") }}
+    ...    msg=tacacs_server_groups.servers.address
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..tacacs.vipValue[{{ tacacs_index }}].server.vipValue[{{ server_index }}].port
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers[server_index].port | default("not_defined") }}
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers[server_index].port_variable | default("not_defined") }}
+    ...    msg=tacacs_server_groups.servers.port
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..tacacs.vipValue[{{ tacacs_index }}].server.vipValue[{{ server_index }}].timeout
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers[server_index].timeout | default("not_defined") }}
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers[server_index].timeout_variable | default("not_defined") }}
+    ...    msg=tacacs_server_groups.servers.timeout
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..tacacs.vipValue[{{ tacacs_index }}].server.vipValue[{{ server_index }}].key
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers[server_index].key | default("not_defined") }}
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers[server_index].key_variable | default("not_defined") }}
+    ...    msg=tacacs_server_groups.servers.key
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..tacacs.vipValue[{{ tacacs_index }}].server.vipValue[{{ server_index }}]["secret-key"]
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers[server_index].secret_key | default("not_defined") }}
+    ...    {{ ft_yaml.tacacs_server_groups[tacacs_index].servers[server_index].secret_key_variable | default("not_defined") }}
+    ...    msg=tacacs_server_groups.servers.secret_key
+
+{% endfor %}
+
+{% endfor %}
+
+    Should Be Equal Value Json List Length    ${ft.json()}    $..user.vipValue    {{ ft_yaml.users | default([]) | length }}    msg=users length
+
+{% for user in ft_yaml.users | default([]) %}
+
+    Log    === User {{loop.index0}} ===
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..user.vipValue[{{loop.index0}}].name
+    ...    {{ user.name | default("not_defined") }}
+    ...    {{ user.name_variable | default("not_defined") }}
+    ...    msg=users.name
+
+    Should Be Equal Value Json String    ${ft.json()}    $..user.vipValue[{{loop.index0}}].vipOptional
+    ...    {{ user.optional | default("not_defined") }}
+    ...    msg=users.optional
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..user.vipValue[{{loop.index0}}].password
+    ...    {{ user.password | default("not_defined") }}
+    ...    {{ user.password_variable | default("not_defined") }}
+    ...    msg=users.password
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..user.vipValue[{{loop.index0}}].privilege
+    ...    {{ user.privilege_level | default("not_defined") }}
+    ...    {{ user.privilege_level_variable | default("not_defined") }}
+    ...    msg=users.privilege_level
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..user.vipValue[{{loop.index0}}].secret
+    ...    {{ user.secret | default("not_defined") }}
+    ...    {{ user.secret_variable | default("not_defined") }}
+    ...    msg=users.secret
+
+    Should Be Equal Value Json Yaml UX1    ${ft.json()}    $..user.vipValue[{{loop.index0}}]["pubkey-chain"]..["key-string"]
+    ...    {{ user.ssh_rsa_keys | default("not_defined") }}
+    ...    {{ user.ssh_rsa_keys_variable | default("not_defined") }}
+    ...    msg=users.ssh_rsa_keys
 
 {% endfor %}
 

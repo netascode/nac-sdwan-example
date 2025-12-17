@@ -4,14 +4,14 @@ class Rule:
     severity = "HIGH"
     
     # Feature Templates can be referenced in Device Templates at ['sdwan']['edge_device_templates'] in 3 levels
-    feature_template_level1 = ['system_template', 'logging_template', 'ntp_template', 'aaa_template', 'bfd_template', 'omp_template', 'security_template', 'vpn_0_template', 'vpn_512_template', 'vpn_service_templates', 'global_settings_template', 'banner_template', 'snmp_template', 'cli_template', 'switchport_templates', 'thousandeyes_template']
-
-    feature_template_level2 = ['bgp_template', 'ethernet_interface_templates', 'ipsec_interface_templates', 'svi_interface_templates', 'ospf_template', 'secure_internet_gateway_template', 'sig_credentials_template', 'container_profile']
+    feature_template_level1 = ['system_template', 'logging_template', 'ntp_template', 'aaa_template', 'bfd_template', 'omp_template', 'security_template', 'vpn_0_template', 'vpn_512_template', 'vpn_service_templates', 'global_settings_template', 'banner_template', 'snmp_template', 'cli_template', 'switchport_templates', 'thousandeyes_template', 'cellular_controller_templates']
+    
+    feature_template_level2 = ['bgp_template', 'ethernet_interface_templates', 'igmp_template', 'ipsec_interface_templates', 'svi_interface_templates', 'multicast_template', 'ospf_template', 'pim_template', 'secure_internet_gateway_template', 'sig_credentials_template', 'container_profile', 'cellular_profile_templates', 'gre_interface_templates', 'cellular_interface_templates']
     
     feature_template_level3 = ['dhcp_server_template']
     
     # Feature Templates defined at ['sdwan']['edge_feature_templates']
-    edge_feature_templates = ['bgp_templates', 'ethernet_interface_templates', 'ipsec_interface_templates', 'svi_interface_templates', 'ospf_templates', 'secure_internet_gateway_templates', 'sig_credentials_templates','system_templates', 'logging_templates', 'ntp_templates', 'aaa_templates', 'bfd_templates', 'omp_templates', 'security_templates', 'vpn_templates', 'global_settings_templates', 'banner_templates', 'snmp_templates', 'cli_templates', 'switchport_templates', 'thousandeyes_templates', 'dhcp_server_templates', 'secure_app_hosting_templates']
+    edge_feature_templates = ['bgp_templates', 'ethernet_interface_templates', 'igmp_templates', 'ipsec_interface_templates', 'svi_interface_templates', 'multicast_templates', 'ospf_templates', 'pim_templates', 'secure_internet_gateway_templates', 'sig_credentials_templates','system_templates', 'logging_templates', 'ntp_templates', 'aaa_templates', 'bfd_templates', 'omp_templates', 'security_templates', 'vpn_templates', 'global_settings_templates', 'banner_templates', 'snmp_templates', 'cli_templates', 'switchport_templates', 'thousandeyes_templates', 'dhcp_server_templates', 'secure_app_hosting_templates', 'gre_interface_templates', 'cellular_interface_templates', 'cellular_controller_templates', 'cellular_profile_templates']
     
     # Feature Template keys in ['sdwan']['edge_device_templates'] are mapped to the keys in ['sdwan']['edge_feature_templates']
     # as they are not the same in both the places for all scenarios
@@ -27,6 +27,7 @@ class Rule:
         'vpn_512_template': 'vpn_templates',
         'vpn_service_templates': 'vpn_templates',
         'global_settings_template': 'global_settings_templates',
+        'igmp_template': 'igmp_templates',
         'banner_template': 'banner_templates',
         'snmp_template': 'snmp_templates',
         'cli_template' : 'cli_templates',
@@ -36,11 +37,17 @@ class Rule:
         'ethernet_interface_templates': 'ethernet_interface_templates',
         'ipsec_interface_templates': 'ipsec_interface_templates',
         'svi_interface_templates': 'svi_interface_templates',
+        'multicast_template': 'multicast_templates',
         'ospf_template': 'ospf_templates',
+        'pim_template': 'pim_templates',
         'secure_internet_gateway_template': 'secure_internet_gateway_templates',
         'sig_credentials_template': 'sig_credentials_templates',
         'dhcp_server_template': 'dhcp_server_templates',
-        'container_profile': 'secure_app_hosting_templates'
+        'container_profile': 'secure_app_hosting_templates',
+        'gre_interface_templates': 'gre_interface_templates',
+        'cellular_interface_templates': 'cellular_interface_templates',
+        'cellular_controller_templates': 'cellular_controller_templates',
+        'cellular_profile_templates': 'cellular_profile_templates'
     }
 
     # Extract the Feature Template names referenced in Device Templates at ['sdwan']['edge_device_templates']

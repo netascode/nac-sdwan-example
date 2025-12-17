@@ -47,7 +47,9 @@ class Rule:
         'region_list': 'region_lists',
         'region_lists': 'region_lists',
         'region_lists_in': 'region_lists',
-        'region_lists_out': 'region_lists'
+        'region_lists_out': 'region_lists',
+        'sla_class_list': 'sla_classes',
+        'default_action_sla_class_list': 'sla_classes'
     }
 
     # Extract the Policy Object Names defined in the Policy Objects at ['sdwan']['policy_objects'][.]
@@ -88,47 +90,54 @@ class Rule:
                     # Policy objects in policy definition
                     try:
                         for ds in inventory['sdwan']['centralized_policies']['definitions'][w][x]:
-                            # Policy objects at policy definition root
-                            if pot in ds:
-                                results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], w, x, pot, ds[pot]))
-                            # Policy objects under paths in policy_definition_sub_branches
-                            if "sequences" in ds:
-                                for seq in ds['sequences']:
-                                    for y in cls.policy_definition_sub_branches:
-                                        if y in seq:                                        
-                                            if pot in seq[y]:
-                                                results.append(cls.make_dict(ds['name'], seq['name'], pot, cls.policy_object_reference[pot], w, x, pot, seq[y][pot]))
-                                        # Policy objects under 'service' in policy_definition_sub_branches
-                                        if "service" in seq[y]:
-                                            if pot in seq[y]['service']:
-                                                results.append(cls.make_dict(ds['name'], seq['name'], pot, cls.policy_object_reference[pot], w, x, pot, seq[y]['service'][pot]))
-                            for reference_branches in cls.policy_definition_sub_branches_cp:
-                                if reference_branches in ds:
-                                    # Policy objects under policy_definition_sub_branches_cp
-                                    for sites in ds[reference_branches]:
-                                        if pot in sites:
-                                            # if policy object is a list
-                                            if isinstance(sites[pot], list):
-                                                for siteobj in sites[pot]:
-                                                    results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], w, x, pot, siteobj))
-                                            # if policy object is not a list
-                                            else:
-                                                results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], w, x, pot, sites[pot]))
-                                        # Policy objects under spokes of the hub_and_spoke_sites
-                                        if 'spokes' in sites:
-                                            for spokes in sites['spokes']:
-                                                if pot in spokes:
-                                                    results.append(cls.make_dict(ds['name'], sites['name'], pot, cls.policy_object_reference[pot], w, x, pot, spokes[pot]))
-                                                if 'hubs' in spokes:
-                                                    for hubs in spokes['hubs']:
-                                                        if pot in hubs:
-                                                            # if policy object is a list
-                                                            if isinstance(hubs[pot], list):
-                                                                for hubobj in hubs[pot]:
-                                                                    results.append(cls.make_dict(ds['name'], sites['name'], pot, cls.policy_object_reference[pot], w, x, pot, hubobj))
-                                                            # if policy object is not a list
-                                                            else:
-                                                                results.append(cls.make_dict(ds['name'], sites['name'], pot, cls.policy_object_reference[pot], w, x, pot, hubs[pot]))
+                            try:
+                                # Policy objects at policy definition root
+                                if pot in ds:
+                                    results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], w, x, pot, ds[pot]))
+                                # Policy objects under paths in policy_definition_sub_branches
+                                if "sequences" in ds:
+                                    for seq in ds['sequences']:
+                                        for y in cls.policy_definition_sub_branches:
+                                            if y in seq:
+                                                if pot in seq[y]:
+                                                    # Special handling for nested sla_class_list structure
+                                                    if pot == 'sla_class_list' and isinstance(seq[y][pot], dict) and 'sla_class_list' in seq[y][pot]:
+                                                        results.append(cls.make_dict(ds['name'], seq['name'], pot, cls.policy_object_reference[pot], w, x, pot, seq[y][pot]['sla_class_list']))
+                                                    else:
+                                                        results.append(cls.make_dict(ds['name'], seq['name'], pot, cls.policy_object_reference[pot], w, x, pot, seq[y][pot]))
+                                                # Policy objects under 'service' in policy_definition_sub_branches
+                                                if "service" in seq[y]:
+                                                    if pot in seq[y]['service']:
+                                                        results.append(cls.make_dict(ds['name'], seq['name'], pot, cls.policy_object_reference[pot], w, x, pot, seq[y]['service'][pot]))
+                                for reference_branches in cls.policy_definition_sub_branches_cp:
+                                    if reference_branches in ds:
+                                        # Policy objects under policy_definition_sub_branches_cp
+                                        for sites in ds[reference_branches]:
+                                            if pot in sites:
+                                                # if policy object is a list
+                                                if isinstance(sites[pot], list):
+                                                    for siteobj in sites[pot]:
+                                                        results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], w, x, pot, siteobj))
+                                                # if policy object is not a list
+                                                else:
+                                                    results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], w, x, pot, sites[pot]))
+                                            # Policy objects under spokes of the hub_and_spoke_sites
+                                            if 'spokes' in sites:
+                                                for spokes in sites['spokes']:
+                                                    if pot in spokes:
+                                                        results.append(cls.make_dict(ds['name'], sites['name'], pot, cls.policy_object_reference[pot], w, x, pot, spokes[pot]))
+                                                    if 'hubs' in spokes:
+                                                        for hubs in spokes['hubs']:
+                                                            if pot in hubs:
+                                                                # if policy object is a list
+                                                                if isinstance(hubs[pot], list):
+                                                                    for hubobj in hubs[pot]:
+                                                                        results.append(cls.make_dict(ds['name'], sites['name'], pot, cls.policy_object_reference[pot], w, x, pot, hubobj))
+                                                                # if policy object is not a list
+                                                                else:
+                                                                    results.append(cls.make_dict(ds['name'], sites['name'], pot, cls.policy_object_reference[pot], w, x, pot, hubs[pot]))
+                            except Exception:
+                                continue
                     except KeyError:
                         continue
             # Policy objects in feature policies
@@ -138,36 +147,40 @@ class Rule:
                         if x in ds:
                             # Policy objects in Level 1 branch of feature policies
                             for pd in ds[x]:
-                                if pot in pd:
-                                    # if policy object is a list
-                                    if isinstance(pd[pot], list):
-                                        for pdobj in pd[pot]:
-                                            results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], "feature_policies", x, pot, pdobj))
-                                    # if policy object is not a list
-                                    else:
-                                        results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], "feature_policies", x, pot, pd[pot]))
-                                # Policy objects in Level 2 branch of feature policies
-                                for pdd in pd:
-                                    if pot in pd[pdd]:
+                                try:
+                                    if pot in pd:
                                         # if policy object is a list
-                                        if isinstance(pd[pdd][pot], list):
-                                            for pdobj in pd[pdd][pot]:
+                                        if isinstance(pd[pot], list):
+                                            for pdobj in pd[pot]:
                                                 results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], "feature_policies", x, pot, pdobj))
                                         # if policy object is not a list
                                         else:
-                                            results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], "feature_policies", x, pot, pd[pdd][pot]))
-                                    # Policy objects in Level 3 branch of feature policies
-                                    for pddd in pd[pdd]:
-                                        # Only if the branch is a dictionary
-                                        if isinstance(pddd, dict):
-                                            if pot in pddd:
-                                                # Only if policy object is a list
-                                                if isinstance(pddd[pot], list):
-                                                    for pdobj in pddd[pot]:
+                                            results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], "feature_policies", x, pot, pd[pot]))
+                                    # Policy objects in Level 2 branch of feature policies
+                                    for pdd in pd:
+                                        # Case 1: Level 2 value is a dict
+                                        if isinstance(pd[pdd], dict):
+                                            if pot in pd[pdd]:
+                                                # if policy object is a list
+                                                if isinstance(pd[pdd][pot], list):
+                                                    for pdobj in pd[pdd][pot]:
                                                         results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], "feature_policies", x, pot, pdobj))
-                                                # Only if policy object is not a list
+                                                # if policy object is not a list
                                                 else:
-                                                    results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], "feature_policies", x, pot, pddd[pot]))
+                                                    results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], "feature_policies", x, pot, pd[pdd][pot]))
+                                        # Case 2: Level 2 value is a list (e.g., site_region_vpn in traffic_data)
+                                        elif isinstance(pd[pdd], list):
+                                            for list_item in pd[pdd]:
+                                                if isinstance(list_item, dict) and pot in list_item:
+                                                    # if policy object is a list
+                                                    if isinstance(list_item[pot], list):
+                                                        for pdobj in list_item[pot]:
+                                                            results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], "feature_policies", x, pot, pdobj))
+                                                    # if policy object is not a list
+                                                    else:
+                                                        results.append(cls.make_dict(ds['name'], "n/a", pot, cls.policy_object_reference[pot], "feature_policies", x, pot, list_item[pot]))
+                                except Exception:
+                                    continue
             except KeyError:
                 continue
         return results  

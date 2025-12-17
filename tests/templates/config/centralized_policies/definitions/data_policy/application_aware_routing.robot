@@ -19,28 +19,36 @@ Verify Centralized Policies Data Policy Application Aware Routing {{ aar.name }}
     ${r_id}=   GET On Session   sdwan_manager   /dataservice/template/policy/definition/approute/${aar_id[0]}
     Set Suite Variable    ${r_id}
     Should Be Equal Value Json String    ${r_id.json()}    $..name    {{ aar.name }}    msg=name
-    Should Be Equal Value Json String    ${r_id.json()}    $..description    {{ aar.description }}    msg=description
+    Should Be Equal Value Json Special_String    ${r_id.json()}    $..description    {{ aar.description | normalize_special_string }}    msg=description
+
+    ${default_action_ref_id}=    Get Value From Json    ${r_id.json()}    $..defaultAction.ref
+    IF    ${default_action_ref_id} == []
+        Should Be Equal Value Json String    ${r_id.json()}    $..defaultAction.ref    {{ aar.default_action_sla_class_list | default("not_defined") }}    msg=default action sla class list
+    ELSE
+        ${default_sla_class_match}=   GET On Session   sdwan_manager   /dataservice/template/policy/list/sla/${default_action_ref_id[0]}
+        Should Be Equal Value Json String    ${default_sla_class_match.json()}    $..name    {{ aar.default_action_sla_class_list | default("not_defined") }}    msg=default action sla class list
+    END
 
     ${sequence_items}=    Get Value From Json    ${r_id.json()}    $.sequences
     ${sequence_length}=    Get Length    ${sequence_items[0]}
-    Should Be Equal As Integers    ${sequence_length}    {{ aar.sequences | length }}    msg=sequences
+    Should Be Equal As Integers    ${sequence_length}    {{ aar.sequences | default([]) | length }}    msg=sequences
 
 {% for sequence in aar.sequences | default([]) %}
 
     Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].sequenceId    {{ sequence.id }}    msg=sequence id
     Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].sequenceName    {{ sequence.name }}    msg=sequence name
 
-{% set type = ({"appRoute":"app_route"}) %}
-    Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].sequenceType    {{ type[sequence.type] }}    msg=sequence type
+{% set type = ({"app_route":"appRoute"}) %}
+    Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].sequenceType    {{ type[(sequence.type | default(defaults.sdwan.centralized_policies.definitions.data_policy.application_aware_routing.sequences.type))] }}    msg=sequence type
 
-    Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].sequenceIpType   {{ sequence.ip_type }}    msg=sequence ip type
+    Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].sequenceIpType   {{ sequence.ip_type | default((defaults.sdwan.centralized_policies.definitions.data_policy.application_aware_routing.sequences.ip_type) if defaults is defined else "not_defined") }}    msg=sequence ip type
 
     ${application_list_ref_id}=    Get Value From Json    ${r_id.json()}    $..sequences[{{loop.index0}}].match.entries[?(@.field=="appList")].ref
     IF    ${application_list_ref_id} == []
         Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].match.entries[?(@.field=="appList")].ref    {{ sequence.match_criterias.application_list | default("not_defined") }}    msg=application list
     ELSE
         ${application_list_match_id}=   GET On Session   sdwan_manager   /dataservice/template/policy/list/app/${application_list_ref_id[0]}
-        Should Be Equal Value Json String    ${application_list_match_id.json()}    $..name    {{ sequence.match_criterias.application_list }}    msg=application list
+        Should Be Equal Value Json String    ${application_list_match_id.json()}    $..name    {{ sequence.match_criterias.application_list | default("not_defined") }}    msg=application list
     END
 
     ${dns_application_list_ref_id}=    Get Value From Json    ${r_id.json()}    $..sequences[{{loop.index0}}].match.entries[?(@.field=="dnsAppList")].ref
@@ -48,7 +56,7 @@ Verify Centralized Policies Data Policy Application Aware Routing {{ aar.name }}
         Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].match.entries[?(@.field=="dnsAppList")].ref    {{ sequence.match_criterias.dns_application_list | default("not_defined") }}    msg=dns application list
     ELSE
         ${dns_application_list_match_id}=   GET On Session   sdwan_manager   /dataservice/template/policy/list/app/${dns_application_list_ref_id[0]}
-        Should Be Equal Value Json String    ${dns_application_list_match_id.json()}    $..name    {{ sequence.match_criterias.dns_application_list }}    msg=dns application list
+        Should Be Equal Value Json String    ${dns_application_list_match_id.json()}    $..name    {{ sequence.match_criterias.dns_application_list | default("not_defined") }}    msg=dns application list
     END
 
     Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].match.entries[?(@.field=="dns")].value    {{ sequence.match_criterias.dns | default("not_defined") }}    msg=dns
@@ -58,7 +66,7 @@ Verify Centralized Policies Data Policy Application Aware Routing {{ aar.name }}
 {% if sequence.match_criterias.protocols | default("not_defined") == 'not_defined' %}
     Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].match.entries[?(@.field=="protocol")].value    {{ sequence.match_criterias.protocols | default("not_defined") }}    msg=no protocols defined
 {% else %}
-    ${protocols_list}=    Create List    {{ sequence.match_criterias.protocols | join('   ') }}
+    ${protocols_list}=    Create List    {{ sequence.match_criterias.protocols | default([]) | join('   ') }}
     ${proto}=    Get Value From Json    ${r_id.json()}    $..sequences[{{loop.index0}}].match.entries[?(@.field=="protocol")].value
     ${rec_proto_list}=    Split String    ${proto[0]}
     Lists Should Be Equal    ${rec_proto_list}    ${protocols_list}    ignore_order=True    msg=protocols
@@ -69,7 +77,7 @@ Verify Centralized Policies Data Policy Application Aware Routing {{ aar.name }}
         Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}]..match.entries[?(@.field=="sourceDataPrefixList")].ref    {{ sequence.match_criterias.source_data_prefix_list | default("not_defined") }}    msg=source data prefix list
     ELSE
         ${source_data_prefix_list_match_id}=   GET On Session   sdwan_manager   /dataservice/template/policy/list/dataprefix/${source_data_prefix_list_ref_id[0]}
-        Should Be Equal Value Json String    ${source_data_prefix_list_match_id.json()}    $..name    {{ sequence.match_criterias.source_data_prefix_list }}    msg=source data prefix list
+        Should Be Equal Value Json String    ${source_data_prefix_list_match_id.json()}    $..name    {{ sequence.match_criterias.source_data_prefix_list | default("not_defined") }}    msg=source data prefix list
     END
 
     Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}]..match.entries[?(@.field=="sourceIp")].value   {{ sequence.match_criterias.source_data_prefix | default("not_defined") }}    msg=source data prefix
@@ -109,7 +117,7 @@ Verify Centralized Policies Data Policy Application Aware Routing {{ aar.name }}
         Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}]..match.entries[?(@.field=="destinationDataPrefixList")].ref    {{ sequence.match_criterias.destination_data_prefix_list | default("not_defined") }}    msg=destination data prefix list
     ELSE
         ${destination_data_prefix_list_match_id}=   GET On Session   sdwan_manager   /dataservice/template/policy/list/dataprefix/${destination_data_prefix_list_ref_id[0]}
-        Should Be Equal Value Json String    ${destination_data_prefix_list_match_id.json()}    $..name    {{ sequence.match_criterias.destination_data_prefix_list }}    msg=destination data prefix list
+        Should Be Equal Value Json String    ${destination_data_prefix_list_match_id.json()}    $..name    {{ sequence.match_criterias.destination_data_prefix_list | default("not_defined") }}    msg=destination data prefix list
     END
 
     Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}]..match.entries[?(@.field=="destinationIp")].value   {{ sequence.match_criterias.destination_data_prefix | default("not_defined") }}    msg=destination data prefix
@@ -171,33 +179,33 @@ Verify Centralized Policies Data Policy Application Aware Routing {{ aar.name }}
 
     ${sla_class_list_ref_id}=    Get Value From Json    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field=="name")].ref
     IF    ${sla_class_list_ref_id} == []
-        Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field=="name")].ref    {{ sequence.actions.sla_class_list.sla_class_list | default("not_defined") }}    msg=sla class list
+        Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field=="name")].ref    {{ (sequence.actions | default({})).sla_class_list.sla_class_list | default("not_defined") }}    msg=sla class list
     ELSE
         ${sla_class_list_match_id}=   GET On Session   sdwan_manager   /dataservice/template/policy/list/sla/${sla_class_list_ref_id[0]}
-        Should Be Equal Value Json String    ${sla_class_list_match_id.json()}    $..name    {{ sequence.actions.sla_class_list.sla_class_list | default("not_defined") }}    msg=sla class list
+        Should Be Equal Value Json String    ${sla_class_list_match_id.json()}    $..name    {{ (sequence.actions | default({})).sla_class_list.sla_class_list | default("not_defined") }}    msg=sla class list
     END
 
-{% if sequence.actions.sla_class_list.preferred_colors | default("not_defined") == 'not_defined' %}
-    Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field=="preferredColor")].value    {{ sequence.actions.sla_class_list.preferred_colors | default("not_defined") }}    msg=preferred colors
+{% if (sequence.actions | default({})).sla_class_list.preferred_colors | default("not_defined") == 'not_defined' %}
+    Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field=="preferredColor")].value    {{ (sequence.actions | default({})).sla_class_list.preferred_colors | default("not_defined") }}    msg=preferred colors
 {% else %}
     ${colors_list}=    Get Value From Json    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field=="preferredColor")].value
     ${rec_prefrd_colors_list}=    Split String    ${colors_list[0]}
-    ${exp_preferred_colors}=    Create List    {{ sequence.actions.sla_class_list.preferred_colors | default("not_defined") | join('   ') }}
+    ${exp_preferred_colors}=    Create List    {{ (sequence.actions | default({})).sla_class_list.preferred_colors | default([]) | join('   ') }}
     Lists Should Be Equal    ${rec_prefrd_colors_list}    ${exp_preferred_colors}    ignore_order=True    msg=preferred colors
 {% endif %}
 
     ${preferred_color_group_ref_id}=    Get Value From Json    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field=="preferredColorGroup")].ref
     IF    ${preferred_color_group_ref_id} == []
-        Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field=="preferredColorGroup")].ref    {{ sequence.actions.sla_class_list.preferred_color_group | default("not_defined") }}    msg=preferred color group
+        Should Be Equal Value Json String    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field=="preferredColorGroup")].ref    {{ (sequence.actions | default({})).sla_class_list.preferred_color_group | default("not_defined") }}    msg=preferred color group
     ELSE
         ${preferred_color_group_match_id}=   GET On Session   sdwan_manager   /dataservice/template/policy/list/preferredcolorgroup/${preferred_color_group_ref_id[0]}
-        Should Be Equal Value Json String    ${preferred_color_group_match_id.json()}    $..name    {{ sequence.actions.sla_class_list.preferred_color_group | default("not_defined") }}    msg=preferred color group
+        Should Be Equal Value Json String    ${preferred_color_group_match_id.json()}    $..name    {{ (sequence.actions | default({})).sla_class_list.preferred_color_group | default("not_defined") }}    msg=preferred color group
     END
 
-{% if sequence.actions.sla_class_list.when_sla_not_met != "load_balance" and sequence.actions.sla_class_list.when_sla_not_met is defined %}
+{% if (sequence.actions | default({})).sla_class_list.when_sla_not_met is defined and (sequence.actions | default({})).sla_class_list.when_sla_not_met != "load_balance" %}
 {% set exp_sla = ({"fallback_to_best_path":"fallbackToBestPath", "strict_drop":"strict"}) %}
     ${rec_data}=    Get Value From Json    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field)].field
-    List Should Contain Value    ${rec_data}    {{ exp_sla[sequence.actions.sla_class_list.when_sla_not_met] | default("not_defined") }}    msg=when sla not met
+    List Should Contain Value    ${rec_data}    {{ exp_sla[(sequence.actions | default({})).sla_class_list.when_sla_not_met] | default("not_defined") }}    msg=when sla not met
 {% else %}
     ${rec_data}=    Get Value From Json    ${r_id.json()}    $..sequences[{{loop.index0}}].actions[?(@.type=="slaClass")].parameter[?(@.field)].field
     List Should Not Contain Value    ${rec_data}    fallbackToBestPath    msg=when sla not met
