@@ -67,11 +67,3 @@ terraform destroy
 ```
 
 This command will delete all the previously created configuration.
-
-## Example Topology
-
-<img src="standard-large-20.9/Topology-sdwan-large.png" width="750"/>
-
-## Topology details
-
-<img src="standard-large-20.9/Topology-data.png" width="750"/>
